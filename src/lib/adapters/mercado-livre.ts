@@ -88,6 +88,11 @@ export interface MercadoLivreOptions {
   getAccessToken?: () => string | undefined;
 }
 
+/** Token usado pelas funções de busca/teste de conexão (mesma fonte do adaptador). */
+function resolveToken(getAccessToken?: () => string | undefined): string | undefined {
+  return (getAccessToken ?? (() => process.env.MERCADO_LIVRE_ACCESS_TOKEN?.trim() || undefined))();
+}
+
 export function createMercadoLivreAdapter(options: MercadoLivreOptions = {}): PriceSourceAdapter {
   const getToken = options.getAccessToken ?? (() => process.env.MERCADO_LIVRE_ACCESS_TOKEN?.trim() || undefined);
   return {
@@ -149,4 +154,190 @@ export function createMercadoLivreAdapter(options: MercadoLivreOptions = {}): Pr
       return mapMercadoLivreItem(json);
     },
   };
+}
+
+/** Candidato de oferta encontrado pela busca oficial do Mercado Livre. */
+export interface MercadoLivreSearchCandidate {
+  externalId: string;
+  title: string | null;
+  priceCents: number | null;
+  currency: string | null;
+  permalink: string | null;
+  imageUrl: string | null;
+  freeShipping: boolean;
+  sellerName: string | null;
+}
+
+/**
+ * Converte o JSON de GET /sites/MLB/search em candidatos padronizados.
+ * Função pura (testada com fixtures). Resultados sem ID válido ou em moeda
+ * diferente de BRL são ignorados; sem preço, o candidato entra com preço null.
+ */
+export function mapMercadoLivreSearchResults(payload: unknown, maxResults = 20): MercadoLivreSearchCandidate[] {
+  if (!payload || typeof payload !== "object") {
+    throw new SourceError("parse_error", "Resposta da busca do Mercado Livre em formato inesperado.");
+  }
+  const results = (payload as { results?: unknown }).results;
+  if (!Array.isArray(results)) {
+    throw new SourceError("parse_error", "A busca do Mercado Livre não retornou a lista de resultados.");
+  }
+  const out: MercadoLivreSearchCandidate[] = [];
+  for (const item of results) {
+    if (out.length >= maxResults) break;
+    if (!item || typeof item !== "object") continue;
+    const it = item as Record<string, unknown>;
+    const id = typeof it.id === "string" ? it.id : "";
+    if (!/^MLB\d{6,}$/.test(id)) continue;
+    const currency = typeof it.currency_id === "string" ? it.currency_id : null;
+    if (currency && currency !== "BRL") continue;
+    const price = typeof it.price === "number" && Number.isFinite(it.price) ? Math.round(it.price * 100) : null;
+    const shipping = it.shipping as { free_shipping?: unknown } | undefined;
+    const permalink = typeof it.permalink === "string" ? it.permalink : null;
+    const thumb = typeof it.thumbnail === "string" ? it.thumbnail : null;
+    const seller = it.seller as { nickname?: unknown } | undefined;
+    out.push({
+      externalId: id,
+      title: typeof it.title === "string" ? it.title.slice(0, 300) : null,
+      priceCents: price,
+      currency,
+      permalink: permalink && permalink.startsWith("https://") ? permalink : null,
+      imageUrl: thumb && (thumb.startsWith("https://") || thumb.startsWith("http://"))
+        ? thumb.replace(/^http:/, "https:")
+        : null,
+      freeShipping: shipping?.free_shipping === true,
+      sellerName: typeof seller?.nickname === "string" ? seller.nickname.slice(0, 160) : null,
+    });
+  }
+  return out;
+}
+
+function mlHeaders(token: string | undefined): Record<string, string> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+function mapMlHttpError(status: number, context: string): SourceError {
+  if (status === 401 || status === 403) {
+    return new SourceError(
+      "unauthorized",
+      `A API do Mercado Livre recusou ${context} (HTTP ${status}). Verifique MERCADO_LIVRE_ACCESS_TOKEN e as permissões da aplicação.`,
+    );
+  }
+  if (status === 429) return new SourceError("rate_limited", "Limite de requisições do Mercado Livre atingido.", true);
+  if (status >= 500) return new SourceError("unavailable", `API do Mercado Livre indisponível (HTTP ${status}).`, true);
+  return new SourceError("unavailable", `Resposta inesperada da API do Mercado Livre (HTTP ${status}).`);
+}
+
+async function fetchMlJson(
+  url: string,
+  opts: { timeoutMs: number; fetchImpl: typeof fetch; token: string | undefined; context: string },
+): Promise<unknown> {
+  let response: Response;
+  try {
+    response = await opts.fetchImpl(url, {
+      headers: mlHeaders(opts.token),
+      redirect: "error",
+      signal: AbortSignal.timeout(opts.timeoutMs),
+    });
+  } catch (err) {
+    const name = (err as { name?: string })?.name;
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new SourceError("timeout", "Tempo esgotado ao consultar o Mercado Livre.", true);
+    }
+    throw new SourceError("unavailable", "Não foi possível conectar à API do Mercado Livre.", true);
+  }
+  if (!response.ok) throw mapMlHttpError(response.status, opts.context);
+  try {
+    return await response.json();
+  } catch {
+    throw new SourceError("parse_error", "Resposta da API do Mercado Livre não é JSON válido.");
+  }
+}
+
+/**
+ * Busca anúncios no Mercado Livre pelo endpoint oficial GET /sites/MLB/search.
+ * Usada para descobrir ofertas de um produto em várias lojas/anunciantes dentro do ML.
+ */
+export async function searchMercadoLivre(
+  query: string,
+  opts: { timeoutMs: number; fetchImpl: typeof fetch; getAccessToken?: () => string | undefined; limit?: number },
+): Promise<MercadoLivreSearchCandidate[]> {
+  const q = query.trim();
+  if (!q) return [];
+  const limit = Math.min(Math.max(opts.limit ?? 20, 1), 50);
+  const url = `${ML_API_BASE}/sites/MLB/search?q=${encodeURIComponent(q)}&limit=${limit}`;
+  const json = await fetchMlJson(url, {
+    timeoutMs: opts.timeoutMs,
+    fetchImpl: opts.fetchImpl,
+    token: resolveToken(opts.getAccessToken),
+    context: "a busca",
+  });
+  return mapMercadoLivreSearchResults(json, limit);
+}
+
+export interface MercadoLivreConnectionReport {
+  ok: boolean;
+  message: string;
+  tokenPresent: boolean;
+  searchOk: boolean | null;
+  resultCount: number | null;
+  identity: string | null;
+}
+
+/**
+ * Testa a integração real com a API do Mercado Livre a partir do servidor:
+ * 1. GET /sites/MLB/search?q=teste&limit=1 (funciona sem token em leitura pública);
+ * 2. se houver token, GET /users/me para validar identidade/permissões.
+ * Nunca imprime o token; apenas relata sucesso ou o motivo da falha.
+ */
+export async function testMercadoLivreConnection(opts: {
+  timeoutMs: number;
+  fetchImpl: typeof fetch;
+  getAccessToken?: () => string | undefined;
+}): Promise<MercadoLivreConnectionReport> {
+  const token = resolveToken(opts.getAccessToken);
+  const report: MercadoLivreConnectionReport = {
+    ok: false,
+    message: "",
+    tokenPresent: Boolean(token),
+    searchOk: null,
+    resultCount: null,
+    identity: null,
+  };
+  try {
+    const json = await fetchMlJson(`${ML_API_BASE}/sites/MLB/search?q=teste&limit=1`, {
+      timeoutMs: opts.timeoutMs,
+      fetchImpl: opts.fetchImpl,
+      token,
+      context: "a busca de teste",
+    });
+    const results = mapMercadoLivreSearchResults(json, 1);
+    report.searchOk = true;
+    report.resultCount = results.length;
+  } catch (err) {
+    report.searchOk = false;
+    report.message = err instanceof SourceError ? err.message : "Falha inesperada no teste de conexão.";
+    return report;
+  }
+  if (token) {
+    try {
+      const json = (await fetchMlJson(`${ML_API_BASE}/users/me`, {
+        timeoutMs: opts.timeoutMs,
+        fetchImpl: opts.fetchImpl,
+        token,
+        context: "a validação do token",
+      })) as { nickname?: unknown; site_id?: unknown };
+      report.identity = typeof json.nickname === "string" ? json.nickname : null;
+      report.ok = true;
+      report.message = `Conexão válida: busca funciona e o token foi aceito${report.identity ? ` (conta: ${report.identity})` : ""}.`;
+    } catch (err) {
+      report.message = `Busca funciona, mas o token foi recusado: ${err instanceof SourceError ? err.message : "falha inesperada."} A coleta por item pode continuar funcionando se a leitura pública for permitida.`;
+      report.ok = true; // busca ok: a integração principal funciona; o token é opcional
+    }
+    return report;
+  }
+  report.ok = true;
+  report.message = "Conexão válida: a API respondeu à busca sem token. Se a consulta por item (GET /items/{id}) for recusada, configure MERCADO_LIVRE_ACCESS_TOKEN.";
+  return report;
 }

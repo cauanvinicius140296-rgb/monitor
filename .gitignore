@@ -27,3 +27,4 @@ npm-debug.log*
 
 # banco efêmero dos testes de integração
 .pgdata-test/
+.pgdata-local/

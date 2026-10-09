@@ -22,9 +22,12 @@ Next.js 16 (App Router) · React 19 · TypeScript · PostgreSQL (Neon) · Drizzl
 | Login do administrador (hash scrypt, sessão em cookie HTTP-only, rate limit) | Implementado |
 | Produtos: cadastro, edição, status (monitorando, pausado, comprado, arquivado), prioridade, preço-alvo e orçamento | Implementado |
 | Cadastro por link (identificação automática quando a loja permite) com preenchimento manual como fallback | Implementado (Mercado Livre) |
+| Busca de ofertas correspondentes ao produto na API oficial de busca do Mercado Livre (GET /sites/MLB/search), com avaliação de correspondência e adição em um clique | Implementado (Mercado Livre) |
 | Detecção de possível duplicata (GTIN, marca+modelo) com confirmação explícita | Implementado |
 | Ofertas por loja, preço manual, frete (com "frete desconhecido" quando não informado), disponibilidade | Implementado |
+| Comparação de ofertas ordenada por preço total (preço + frete quando conhecido), sem preço e divergentes por último | Implementado |
 | Coleta automática via API oficial do Mercado Livre, com lote, limite por loja, retries controlados e circuit breaker | Implementado |
+| Teste de conexão real com a API do Mercado Livre na aba Fontes (busca de teste e validação do token, sem exibir segredos) | Implementado |
 | Execução duplicada bloqueada por trava no banco; cron protegido por segredo | Implementado |
 | Histórico de preços, gráficos 24h/7d/30d/90d/tudo, métricas (atual, menor, maior, média, variação %, data do menor) | Implementado |
 | Comparação de ofertas (total estimado, diferença R$ e %, confirmação manual de correspondência) | Implementado |
@@ -47,8 +50,8 @@ src/
   components/             interface (formulários, gráfico, tabelas)
   db/                     schema Drizzle, cliente, bootstrap de dados base
   lib/
-    adapters/             adaptadores de loja (Mercado Livre; pendentes para as demais)
-    analysis/             matching, referências, séries, alertas, confiança, lista de compras
+    adapters/             adaptadores de loja (Mercado Livre: item + busca + teste de conexão; pendentes para as demais)
+    analysis/             matching, comparação/ordenação, referências, séries, alertas, confiança, lista de compras
     auth/                 senha, sessão, login
     monitoring/           coleta em lote, trava, observações, alertas
     repos/                consultas de leitura (catálogo, painel, configurações)
@@ -100,7 +103,9 @@ O workflow `.github/workflows/ci.yml` executa tipos, testes e build a cada push 
 ## Operação
 
 - Painel: `/`. Produtos: `/produtos` (busca, filtros por categoria, loja, prioridade, status e faixa de preço, ordenação e paginação). Detalhes: `/produtos/[id]`.
+- Na página do produto: comparação de ofertas ordenada por preço total e "Buscar ofertas no Mercado Livre" (busca oficial por nome/marca/modelo, com correspondência avaliada e adição em um clique).
 - Coleta manual: botão "Consultar fontes agora" no painel ou na página do produto.
+- Teste de conexão com a API do Mercado Livre: aba **Fontes** (valida busca e token a partir do servidor).
 - Coleta agendada: `.github/workflows/monitor-cron.yml`, a cada 6 horas (UTC). Configure os secrets `APP_URL` e `CRON_SECRET` no GitHub.
 - Backup e restauração: `scripts/backup.sh` e `scripts/restore.sh` (detalhes em `docs/implantacao.md`).
 
@@ -116,7 +121,7 @@ O workflow `.github/workflows/ci.yml` executa tipos, testes e build a cada push 
 
 ## Limitações conhecidas
 
-- Coleta automática apenas no Mercado Livre (API oficial). As demais lojas precisam de atualização manual até que a integração seja verificada na documentação oficial de cada uma.
+- Coleta automática e busca de ofertas apenas no Mercado Livre (APIs oficiais `/items/{id}` e `/sites/MLB/search`). As demais lojas precisam de atualização manual e de links adicionados manualmente até que a integração seja verificada na documentação oficial de cada uma (Amazon: PA-API 5 com credenciais; Magalu: programa de parceiros; Fast Shop: sem API pública).
 - Frete ao CEP não é obtido automaticamente; sem o valor informado, a comparação usa "frete desconhecido".
 - Os scripts de backup não foram executados neste ambiente (cliente `pg_dump` indisponível). Teste a restauração antes de depender deles.
 - Não há teste de ponta a ponta no navegador nem teste de carga; o plano de Black Friday está em `docs/fases.md`.

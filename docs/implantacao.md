@@ -145,6 +145,8 @@ Se não conseguir entrar, confirme o resultado da etapa **Criar administrador** 
 
 O Radar não contorna CAPTCHA, autenticação obrigatória, limites de acesso ou proteções das lojas. Quando uma fonte não permite leitura automática, o preço é atualizado manualmente e a origem fica registrada como manual. O item do Mercado Livre não informa o custo de frete ao CEP; sem esse dado, o frete permanece desconhecido.
 
+O Mercado Livre também é usado para **descobrir ofertas**: a busca oficial (`GET /sites/MLB/search`) alimenta o botão "Buscar ofertas no Mercado Livre" na página do produto. Para validar a integração a partir do servidor publicado, use o botão **Testar conexão** na aba Fontes (consulta real à API; com token configurado, valida também a conta via `GET /users/me`). Nenhum segredo aparece nas respostas.
+
 ---
 
 ## 8. Backup e restauração

@@ -156,6 +156,33 @@ bash scripts/backup.sh   # requer DATABASE_URL e pg_dump instalado
 - **Backup não executado:** os scripts foram validados quanto à sintaxe e às proteções, mas `pg_dump`/`pg_restore` não estavam disponíveis no ambiente. Faça um teste de restauração antes da Black Friday.
 - **Carga e desempenho:** não há teste de carga nem medição de tempo de resposta sob uso intenso.
 - **Navegador:** não há teste de ponta a ponta (login pelo formulário, cadastro pela tela). Os fluxos foram testados nas ações de servidor e nas páginas autenticadas.
-- **Deploy:** a publicação na Vercel e o disparo do agendador na URL pública precisam ser feitos e verificados pelo usuário seguindo `docs/implantacao.md`.
+- **Deploy:** concluído em produção (Vercel) com bootstrap do banco via workflow temporário; o disparo manual do agendador contra a URL pública respondeu HTTP 200 em 2026-10-09 (execução registrada em `monitoring_runs`). Permanece pendente validar uma coleta com ofertas reais cadastradas.
 - **Monitoramento externo:** não há alerta de falha fora da aplicação além do próprio workflow do GitHub (que falha e notifica quando a coleta retorna erro).
 - **Recomendação para a semana da Black Friday:** rodar uma coleta manual de ponta a ponta, conferir o painel de fontes, fazer um backup e uma restauração de teste.
+
+---
+
+## Fase 6 — Busca de ofertas e refinamento da comparação · Concluída
+
+**Implementado**
+
+- Busca de ofertas correspondentes ao produto na API oficial de busca do Mercado Livre (`GET /sites/MLB/search`): botão "Buscar ofertas no Mercado Livre" na página do produto. A consulta é montada com nome/marca/modelo/código (até 10 tokens); cada anúncio volta com preço, frete grátis, vendedor e avaliação de correspondência pelas regras de matching existentes. Anúncios já cadastrados são marcados; os demais podem ser adicionados em um clique (a identificação completa ocorre via `GET /items/{id}`).
+- Comparação de ofertas ordenada por preço total: `sortOffersForComparison` (pura) coloca o menor total comparável primeiro; ofertas sem preço conhecido, divergentes e desativadas vêm depois, nessa ordem. Usada pelo catálogo inteiro (painel, produto, lista).
+- Teste de conexão real com a API do Mercado Livre na aba Fontes: busca de teste e, quando há `MERCADO_LIVRE_ACCESS_TOKEN`, validação da conta via `GET /users/me`. Nenhum segredo é exibido.
+- Servidor de desenvolvimento local com PostgreSQL embutido (`scripts/local-pg.mjs`) e escape de iframe para preview (`RADAR_ALLOW_PREVIEW_FRAME`, somente ambientes controlados).
+
+**Arquivos principais:** `src/lib/adapters/mercado-livre.ts` (busca e teste de conexão), `src/lib/services/search-offers.ts`, `src/lib/analysis/comparison.ts`, `src/app/actions/offers.ts` (`searchOffersAction`), `src/app/actions/sources.ts`, `src/components/offer-search.tsx`, `src/app/(app)/fontes/page.tsx`, `src/app/(app)/produtos/[id]/page.tsx`, `src/lib/repos/catalog.ts`.
+
+**Testes:** unitários novos (`tests/unit/comparison.test.ts`, `tests/unit/mercado-livre-search.test.ts`) e de integração (`tests/integration/search-offers.test.ts`, ordenação em `read-models.test.ts`). Total: 88 unitários + 58 de integração, todos passando, além de typecheck e build.
+
+**Validação em ambiente real (2026-10-09)**
+
+- Bootstrap do Neon e do administrador executado com sucesso pelo workflow temporário na `main`.
+- Disparo manual do workflow de monitoramento concluído com sucesso (endpoint respondeu HTTP 200 na URL pública).
+- Aplicação de produção verificada: `/api/health` = ok via workflow; cron protegido por segredo.
+
+**Pendências que dependem de credenciais/acesso externo**
+
+- Validar a busca e a coleta do Mercado Livre com ofertas reais em produção (requer produtos cadastrados; o token `MERCADO_LIVRE_ACCESS_TOKEN` só é necessário se a API recusar leitura pública).
+- Executar o backup real (`pg_dump`) — cliente PostgreSQL não estava disponível no ambiente de desenvolvimento.
+- Amazon (PA-API 5), Magalu e Fast Shop seguem sem integração automatizada: exigem credenciais/programas oficiais; sem simulação.
