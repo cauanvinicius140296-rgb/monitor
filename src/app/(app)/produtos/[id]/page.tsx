@@ -20,8 +20,9 @@ import { RunCollectionButton } from "@/components/run-collection-button";
 import { ProductForm } from "@/components/product-form";
 import { centsToInput, formatBRL, formatPercent } from "@/lib/money";
 import { OfferAddForm, ManualPriceForm, PurchaseForm } from "@/components/forms";
+import { OfferSearchPanel } from "@/components/offer-search";
 import { updateProductAction, setProductStatusAction } from "@/app/actions/products";
-import { addOfferAction, registerManualPriceAction, setOfferMatchAction, toggleOfferAction } from "@/app/actions/offers";
+import { addOfferAction, registerManualPriceAction, searchOffersAction, setOfferMatchAction, toggleOfferAction } from "@/app/actions/offers";
 import { registerPurchaseAction } from "@/app/actions/purchases";
 import { setAlertStatusAction } from "@/app/actions/alerts";
 
@@ -330,6 +331,11 @@ export default async function ProdutoDetalhePage({
               <h3 className="mb-3 text-sm font-semibold text-slate-800">Adicionar oferta de outra loja</h3>
               <OfferAddForm productId={id} action={addOfferAction} />
             </div>
+          </Card>
+
+          <Card>
+            <CardTitle>Buscar ofertas correspondentes</CardTitle>
+            <OfferSearchPanel productId={id} action={searchOffersAction} addAction={addOfferAction} />
           </Card>
 
           <Card>

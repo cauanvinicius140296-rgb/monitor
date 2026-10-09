@@ -75,6 +75,37 @@ describe("leitura consolidada (painel, lista de produtos)", () => {
     expect(views.map((v) => v.id)).toEqual([p3]);
   });
 
+  it("ordena as ofertas do produto por preço total (comparável), sem preço por último", async () => {
+    const db = getDb();
+    const p = await insertProduct(db, productInput({ name: "Liquidificador Ordenação" }));
+    await addOffer(db, {
+      productId: p,
+      rawUrl: "https://loja-x.com.br/p/cara",
+      identified: null,
+      manual: { priceCents: 40_000, shippingCents: 5_000, shippingKnown: true, availability: "disponivel" },
+      now: NOW,
+    });
+    await addOffer(db, {
+      productId: p,
+      rawUrl: "https://loja-y.com.br/p/barata",
+      identified: null,
+      manual: { priceCents: 30_000, shippingCents: 0, shippingKnown: true, availability: "disponivel" },
+      now: NOW,
+    });
+    await addOffer(db, {
+      productId: p,
+      rawUrl: "https://loja-z.com.br/p/sem-preco",
+      identified: null,
+      manual: { priceCents: null, shippingCents: null, shippingKnown: false, availability: "desconhecido" },
+      now: NOW,
+    });
+    const settings = await loadSettings(db);
+    const [view] = await loadCatalog(db, { now: NOW, settings, filter: { productIds: [p] } });
+    // 30.000 (frete grátis) < 45.000 (40.000 + 5.000) < sem preço.
+    expect(view.offers.map((o) => o.comparableCents)).toEqual([30_000, 45_000, null]);
+    expect(view.best?.comparableCents).toBe(30_000);
+  });
+
   it("painel carrega indicadores sem erro", async () => {
     await seed();
     const db = getDb();

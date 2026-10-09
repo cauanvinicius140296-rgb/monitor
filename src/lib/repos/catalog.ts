@@ -1,6 +1,7 @@
 import { eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@/db/client";
 import { offers, products, stores } from "@/db/schema";
+import { sortOffersForComparison } from "../analysis/comparison";
 import { scoreOfferConfidence, type ConfidenceResult } from "../analysis/confidence";
 import { pickReferenceFromAggregates, potentialSavingCents, type ReferenceMode } from "../analysis/references";
 import { percentDrop } from "../money";
@@ -269,7 +270,8 @@ export async function loadCatalog(
   }
 
   return selected.map((p): ProductView => {
-    const offers_ = (offersByProduct.get(p.id) ?? []).sort((a, b) => a.storeName.localeCompare(b.storeName));
+    // Comparação: menor preço total primeiro (quando conhecido); sem preço e divergentes depois.
+    const offers_ = sortOffersForComparison(offersByProduct.get(p.id) ?? []);
     const active = offers_.filter((o) => o.isActive);
     const candidates = active.filter(
       (o) => o.comparableCents !== null && o.matchStatus !== "divergente" && o.availability !== "indisponivel",

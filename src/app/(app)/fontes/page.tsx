@@ -6,6 +6,8 @@ import { loadSettings } from "@/lib/repos/settings-repo";
 import { STORE_CATALOG } from "@/lib/stores-catalog";
 import { formatDateTime, timeAgo } from "@/lib/format";
 import { Badge, Card, CardTitle, EmptyState, Notice, PageHeader } from "@/components/ui";
+import { FormWithState } from "@/components/form-with-state";
+import { testMercadoLivreAction } from "@/app/actions/sources";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +61,16 @@ export default async function FontesPage() {
         Só são consultadas automaticamente as lojas com integração por API oficial. As demais exigem atualização manual ou credenciais/programa
         da própria loja. O Radar não contorna CAPTCHA, login obrigatório, limites de acesso ou outras proteções.
       </Notice>
+
+      <Card className="mt-4">
+        <CardTitle>Teste de conexão — Mercado Livre</CardTitle>
+        <p className="mb-3 text-sm text-slate-600">
+          Consulta real à API oficial a partir deste servidor (busca de teste e, com token, validação da conta). Nenhum token é exibido.
+        </p>
+        <FormWithState action={testMercadoLivreAction} submitLabel="Testar conexão agora" pendingLabel="Testando…" className="space-y-2">
+          <span />
+        </FormWithState>
+      </Card>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {storeRows.map((s) => {
