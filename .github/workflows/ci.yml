@@ -1,0 +1,42 @@
+# Verificação contínua: tipos, testes unitários, testes de integração (PostgreSQL efêmero) e build.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verificacao:
+    name: Tipos, testes e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # Valores fictícios apenas para o build; nenhum segredo real fica no workflow.
+      SESSION_SECRET: ci-session-secret-com-mais-de-trinta-e-dois-caracteres
+      CRON_SECRET: ci-cron-secret-com-mais-de-vinte-e-quatro-caracteres
+      APP_URL: http://localhost:3000
+      DATABASE_URL: postgresql://radar:radar@127.0.0.1:5432/radar_build?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Tipos (tsc --noEmit)
+        run: npm run typecheck
+
+      - name: Testes unitários
+        run: npm run test:unit
+
+      - name: Testes de integração (PostgreSQL local efêmero)
+        run: npm run test:integration
+
+      - name: Build de produção
+        run: npm run build

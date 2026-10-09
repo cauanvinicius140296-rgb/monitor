@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Tabelas com rolagem horizontal em telas pequenas */
+.table-wrap {
+  @apply w-full overflow-x-auto;
+}
