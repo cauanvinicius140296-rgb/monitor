@@ -8,7 +8,7 @@ Aplicação web privada para acompanhar preços de produtos (foco na Black Frida
 
 Documentação:
 
-- [`docs/implantacao.md`](docs/implantacao.md): Neon, variáveis, Vercel, agendador, credenciais de APIs, backup e diagnóstico.
+- [`docs/implantacao.md`](docs/implantacao.md): Neon, workflow temporário de bootstrap, secrets, Vercel, login, agendador, backup e diagnóstico.
 - [`docs/fases.md`](docs/fases.md): o que foi implementado em cada fase, arquivos, como testar, variáveis e limitações.
 
 ## Stack
@@ -58,7 +58,7 @@ drizzle/                  migrations SQL reproduzíveis
 scripts/                  migrate, create-admin, run-monitor, seed-demo, backup, restore
 tests/unit/               testes unitários (dados simulados, sem rede nem banco)
 tests/integration/        testes com PostgreSQL local efêmero (embedded-postgres)
-.github/workflows/        agendador (monitor-cron.yml) e CI (ci.yml)
+.github/workflows/        CI, monitoramento a cada 6h e bootstrap manual temporário
 ```
 
 ## Desenvolvimento local
@@ -69,9 +69,11 @@ Requisitos: Node.js 20.9+ (recomendado 22) e um PostgreSQL acessível.
 npm install
 cp .env.example .env.local      # preencha DATABASE_URL, SESSION_SECRET, APP_URL, CRON_SECRET
 npm run db:migrate              # cria/atualiza as tabelas
-DATABASE_URL=... ADMIN_EMAIL=voce@exemplo.com ADMIN_PASSWORD=... npm run admin:create
+DATABASE_URL=... ADMIN_EMAIL=... ADMIN_PASSWORD=... npm run admin:create
 npm run dev                     # http://localhost:3000
 ```
+
+Contas existentes não têm a senha alterada por padrão; use `--confirm-existing-password-reset` apenas quando quiser substituí-la explicitamente.
 
 Dados de demonstração (opcional, só para ver a interface):
 
@@ -105,6 +107,7 @@ O workflow `.github/workflows/ci.yml` executa tipos, testes e build a cada push 
 ## Segurança
 
 - Rotas do painel exigem sessão; sem sessão, redirecionam para `/login`.
+- O bootstrap inicial é um workflow manual e temporário do GitHub Actions; não há endpoint público de bootstrap. Contas existentes não têm a senha alterada sem confirmação explícita.
 - O endpoint de coleta exige `Authorization: Bearer <CRON_SECRET>`. Sem segredo configurado, responde 503.
 - URLs informadas pelo usuário passam por validação: apenas https e hosts públicos. Endereços internos (localhost, IPs privados, metadados de nuvem) são recusados.
 - Ações sensíveis (login, criação de oferta, identificação por link) têm limite de tentativas no banco.

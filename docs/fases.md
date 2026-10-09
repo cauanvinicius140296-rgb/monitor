@@ -30,9 +30,9 @@ npm run test:unit
 npm run test:integration   # inclui products-offers.test.ts e actions.test.ts
 ```
 
-**Variáveis:** `DATABASE_URL`, `SESSION_SECRET`, `APP_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (só no `admin:create`), `DATABASE_POOL_MAX` (opcional).
+**Variáveis:** `DATABASE_URL`, `SESSION_SECRET`, `APP_URL`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` (só no bootstrap/script), `DATABASE_POOL_MAX` (opcional).
 
-**Limitações:** sem recuperação de senha (o administrador troca a senha rodando `admin:create` de novo).
+**Limitações:** sem recuperação de senha pela interface. Uma conta existente só tem a senha alterada executando `admin:create` com `--confirm-existing-password-reset`; sem essa confirmação, permanece intacta.
 
 ---
 

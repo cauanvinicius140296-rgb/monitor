@@ -1,0 +1,80 @@
+# TEMPORÁRIO: bootstrap inicial do Neon e da conta de administrador.
+# Remova este workflow em um PR após o bootstrap e o teste de login.
+# Este workflow não executa seed de demonstração e não cria endpoints públicos.
+name: Bootstrap temporário (banco e administrador)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_existing_admin_password_reset:
+        description: "Autoriza substituir a senha se ADMIN_EMAIL já existir. Deixe desmarcado para preservar a conta."
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: radar-bootstrap-banco-admin
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    name: Migrar o banco e configurar o administrador
+    # Use somente a branch padrão: o workflow executa código com acesso a secrets.
+    if: ${{ github.ref_name == github.event.repository.default_branch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Validar secrets obrigatórios sem exibir valores
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::Configure o secret DATABASE_URL em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ -z "${ADMIN_EMAIL:-}" ]; then
+            echo "::error::Configure o secret ADMIN_EMAIL em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+          if [ -z "${ADMIN_PASSWORD:-}" ]; then
+            echo "::error::Configure o secret ADMIN_PASSWORD em Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # O passo seguinte só começa se todas as migrations e os dados-base terminarem com sucesso.
+      - name: Aplicar migrations e dados básicos
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: npm run db:migrate
+
+      - name: Criar administrador sem alterar uma conta existente
+        if: ${{ inputs.confirm_existing_admin_password_reset != true }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: npm run admin:create
+
+      - name: Criar administrador com redefinição explicitamente confirmada
+        if: ${{ inputs.confirm_existing_admin_password_reset == true }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: npm run admin:create -- --confirm-existing-password-reset
