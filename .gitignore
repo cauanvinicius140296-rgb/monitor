@@ -1,0 +1,29 @@
+# dependências e builds
+node_modules/
+.next/
+out/
+build/
+dist/
+coverage/
+*.tsbuildinfo
+next-env.d.ts
+
+# ambiente e segredos (nunca versionar)
+.env
+.env.*
+!.env.example
+.vercel/
+
+# dados locais de desenvolvimento
+.pgdata/
+backups/
+*.dump
+*.sql.gz
+
+# logs
+npm-debug.log*
+*.log
+.DS_Store
+
+# banco efêmero dos testes de integração
+.pgdata-test/

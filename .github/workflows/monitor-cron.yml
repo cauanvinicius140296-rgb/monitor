@@ -1,0 +1,59 @@
+# Agendador externo do Radar de Preços.
+#
+# Por que GitHub Actions e não Vercel Cron: o plano Hobby da Vercel só aceita
+# cron de no máximo 1 execução por dia, e a coleta precisa rodar a cada 6 horas.
+#
+# Requisitos (Settings > Secrets and variables > Actions):
+#   APP_URL      URL pública da aplicação, sem barra final (ex.: https://radar-precos.vercel.app)
+#   CRON_SECRET  mesmo valor configurado na aplicação (variável CRON_SECRET)
+#
+# A execução agendada só roda a partir da branch padrão (main).
+# Use "Run workflow" para disparar manualmente.
+name: Monitoramento de preços
+
+on:
+  schedule:
+    # A cada 6 horas (UTC). O minuto 17 evita o pico de execuções no início da hora.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Impede duas chamadas simultâneas do mesmo workflow (a aplicação também tem trava própria).
+concurrency:
+  group: radar-monitoramento
+  cancel-in-progress: false
+
+jobs:
+  coleta:
+    name: Disparar coleta no servidor
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Chamar o endpoint de coleta
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -uo pipefail
+          if [ -z "${APP_URL:-}" ] || [ -z "${CRON_SECRET:-}" ]; then
+            echo "Configure os secrets APP_URL e CRON_SECRET no repositório."
+            exit 1
+          fi
+          url="${APP_URL%/}/api/cron/monitor"
+          # O segredo vai no header Authorization e nunca é impresso.
+          status=$(curl -sS -o resposta.json -w "%{http_code}" --max-time 300 \
+            -X POST -H "Authorization: Bearer ${CRON_SECRET}" "$url")
+          curl_exit=$?
+          echo "HTTP ${status:-sem resposta}"
+          cat resposta.json 2>/dev/null || true
+          echo
+          if [ "$curl_exit" -ne 0 ]; then
+            echo "Falha de rede ao chamar a aplicação (curl código $curl_exit)."
+            exit 1
+          fi
+          if [ "$status" != "200" ]; then
+            echo "A coleta não concluiu com sucesso. Veja docs/implantacao.md, seção Diagnóstico."
+            exit 1
+          fi
